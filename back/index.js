@@ -17,7 +17,7 @@ const app = express()
 const allowedOrigins = [
   'http://localhost:5173',
   'http://127.0.0.1:5173',
-  'https://tu-frontend-url.vercel.app' // Reemplaza con tu dominio de Vercel del frontend
+  'https://proyecto10-rm.vercel.app' // Añade aquí tu dominio de frontend en Vercel
 ]
 
 app.use(
@@ -39,6 +39,15 @@ app.use(
 app.use(express.json({ limit: '50mb' }))
 app.use(express.urlencoded({ limit: '50mb', extended: true }))
 
+// Rutas base
+app.get('/', (req, res) => {
+  res.json({ message: 'Backend API is running' })
+})
+
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'healthy', timestamp: new Date().toISOString() })
+})
+
 // Conexión a la base de datos MongoDB
 const connectDB = async () => {
   try {
@@ -50,20 +59,28 @@ const connectDB = async () => {
   }
 }
 
-// Conectar rutas
+// Rutas de la API
 app.use('/api/v1/users', usersRouter)
 app.use('/api/v1/books', librosRouter)
 app.use('/api/v1/upload', uploadRouter)
 
-// Ruta para manejar rutas no encontradas
-app.use((req, res, next) => {
-  res.status(404).json({ error: 'Ruta no encontrada' })
+// Manejo de rutas no encontradas
+app.use((req, res) => {
+  res.status(404).json({
+    error: 'Not Found',
+    message: `La ruta ${req.originalUrl} no existe`,
+    method: req.method,
+    timestamp: new Date().toISOString()
+  })
 })
 
-// Error handling middleware
+// Manejo de errores
 app.use((err, req, res, next) => {
-  console.error(err.stack)
-  res.status(500).json({ error: 'Error en el servidor' })
+  console.error('Error:', err)
+  res.status(err.status || 500).json({
+    error: err.message || 'Error interno del servidor',
+    timestamp: new Date().toISOString()
+  })
 })
 
 // Configuramos el puerto
