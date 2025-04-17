@@ -7,9 +7,11 @@
     "back"
   ],
   "scripts": {
-    "build": "npm run build --workspace=front",
-    "start": "npm run start --workspace=back",
-    "dev:front": "npm run dev --workspace=front",
-    "dev:back": "npm run server --workspace=back"
+    "install:front": "cd front && npm install",
+    "install:back": "cd back && npm install",
+    "postinstall": "npm run install:front && npm run install:back",
+    "start": "cd back && npm start",
+    "dev:front": "cd front && npm run dev",
+    "dev:back": "cd back && npm run server"
   }
 }
