@@ -1,34 +1,19 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "back/index.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "front/package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "buildCommand": "cd front && npm install && npm run build",
-        "outputDirectory": "dist"
-      }
-    }
-  ],
+  "framework": "vite",
+  "buildCommand": "cd front && npm install && npm run build",
+  "outputDirectory": "front/dist",
   "routes": [
-    {
-      "src": "/api/v1/(.*)",
-      "dest": "/back/index.js"
-    },
     {
       "handle": "filesystem"
     },
     {
       "src": "/assets/(.*)",
-      "dest": "/front/dist/assets/$1"
+      "dest": "/assets/$1"
     },
     {
       "src": "/(.*)",
-      "dest": "/front/dist/index.html"
+      "dest": "/index.html"
     }
   ],
   "github": {
