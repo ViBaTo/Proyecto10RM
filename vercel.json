@@ -6,8 +6,12 @@
       "use": "@vercel/node"
     },
     {
-      "src": "front/**",
-      "use": "@vercel/static"
+      "src": "front/package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "buildCommand": "cd front && npm run build",
+        "outputDirectory": "front/dist"
+      }
     }
   ],
   "routes": [
@@ -16,8 +20,15 @@
       "dest": "back/index.js"
     },
     {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/assets/(.*)",
+      "dest": "/front/dist/assets/$1"
+    },
+    {
       "src": "/(.*)",
-      "dest": "front/$1"
+      "dest": "/front/dist/index.html"
     }
   ]
 }

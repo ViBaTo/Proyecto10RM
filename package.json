@@ -1,0 +1,15 @@
+{
+  "name": "proyecto10-rm",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "front",
+    "back"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace=front",
+    "start": "npm run start --workspace=back",
+    "dev:front": "npm run dev --workspace=front",
+    "dev:back": "npm run server --workspace=back"
+  }
+}
