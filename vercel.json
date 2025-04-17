@@ -1,8 +1,8 @@
 {
   "version": 2,
   "framework": "vite",
-  "buildCommand": "cd front && npm install && npm run build",
-  "outputDirectory": "front/dist",
+  "buildCommand": "npm install && npm run build",
+  "outputDirectory": "dist",
   "routes": [
     {
       "handle": "filesystem"
