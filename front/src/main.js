@@ -8,9 +8,7 @@ import Register from './components/Register.js'
 import Favorites from './components/Favorites.js'
 import CreateBook from './components/CreateBook.js'
 import Profile from './components/Profile.js'
-
-// URLs de la API
-const API_URL = 'http://localhost:3000/api/v1'
+import { api, showNotification } from './utils/api.js'
 
 // Estado global
 let currentUser = null
@@ -19,18 +17,20 @@ let books = []
 // Función para cargar los libros
 async function loadBooks() {
   try {
-    const response = await fetch(`${API_URL}/books`)
-    const data = await response.json()
-    books = data
+    const response = await api.getBooks({ page: 1, limit: 10 })
+    books = response.data || response
     renderBooks()
   } catch (error) {
     console.error('Error cargando los libros:', error)
+    // El error ya se maneja en la función api
   }
 }
 
 // Función para renderizar los libros
 function renderBooks() {
   const booksGrid = document.querySelector('.books-grid')
+  if (!booksGrid) return
+
   booksGrid.innerHTML = books
     .map(
       (book) => `
@@ -93,10 +93,14 @@ document.querySelector('#profilelink').addEventListener('click', (e) => {
 
 document.querySelector('#logoutlink').addEventListener('click', (e) => {
   e.preventDefault()
-  localStorage.removeItem('user')
-  alert('See you soon!')
-  updateNavigation()
-  Books()
+
+  // Mostrar confirmación antes de cerrar sesión
+  if (confirm('¿Estás seguro de que quieres cerrar sesión?')) {
+    localStorage.removeItem('user')
+    showNotification('¡Hasta pronto!', 'info')
+    updateNavigation()
+    Books()
+  }
 })
 
 // Función para actualizar la navegación según el estado de autenticación
@@ -125,6 +129,33 @@ const updateNavigation = () => {
   }
 }
 
+// Función para verificar el estado de autenticación al cargar
+const checkAuthStatus = () => {
+  const userData = localStorage.getItem('user')
+  if (userData) {
+    try {
+      const user = JSON.parse(userData)
+      if (user.user && user.token) {
+        currentUser = user.user
+        showNotification(
+          `Bienvenido de vuelta, ${user.user.userName}!`,
+          'info',
+          3000
+        )
+      } else {
+        // Datos corruptos, limpiar
+        localStorage.removeItem('user')
+        currentUser = null
+      }
+    } catch (error) {
+      console.error('Error parsing user data:', error)
+      localStorage.removeItem('user')
+      currentUser = null
+    }
+  }
+}
+
 // Inicialización
+checkAuthStatus()
 updateNavigation()
 Books()

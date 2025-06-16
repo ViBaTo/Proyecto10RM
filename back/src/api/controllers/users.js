@@ -5,28 +5,65 @@
 import { generarToken } from '../../utils/jwt.js'
 import User from '../models/users.js'
 import bcrypt from 'bcrypt'
+import {
+  createNotFoundError,
+  createValidationError
+} from '../../middlewares/errorHandler.js'
+import { logDatabase, logError, logAuth } from '../../middlewares/logger.js'
 
 const getUsers = async (req, res, next) => {
+  const startTime = Date.now()
+
   try {
     const users = await User.find().populate('favoritos')
-    return res.status(200).json(users)
+
+    const duration = Date.now() - startTime
+    logDatabase('FIND', 'users', duration, true)
+
+    return res.status(200).json({
+      success: true,
+      data: users
+    })
   } catch (error) {
-    return res.status(400).json({ error: 'Error getting users' })
+    const duration = Date.now() - startTime
+    logDatabase('FIND', 'users', duration, false)
+    logError(error, req)
+    next(error)
   }
 }
 
 const getUserById = async (req, res, next) => {
+  const startTime = Date.now()
+
   try {
     const { id } = req.params
     const user = await User.findById(id).populate('favoritos')
-    return res.status(200).json(user)
+
+    if (!user) {
+      throw createNotFoundError('Usuario')
+    }
+
+    const duration = Date.now() - startTime
+    logDatabase('FIND_BY_ID', 'users', duration, true)
+
+    return res.status(200).json({
+      success: true,
+      data: user
+    })
   } catch (error) {
-    return res.status(400).json({ error: 'Error getting user' })
+    const duration = Date.now() - startTime
+    logDatabase('FIND_BY_ID', 'users', duration, false)
+    logError(error, req)
+    next(error)
   }
 }
 
 const register = async (req, res, next) => {
+  const startTime = Date.now()
+
   try {
+    console.log('Intentando registrar usuario:', req.body)
+
     // Verificar si ya existe un usuario con ese nombre o email
     const userDuplicated = await User.findOne({
       $or: [{ userName: req.body.userName }, { email: req.body.email }]
@@ -34,9 +71,12 @@ const register = async (req, res, next) => {
 
     if (userDuplicated) {
       if (userDuplicated.userName === req.body.userName) {
-        return res.status(400).json({ error: 'Username already exists' })
+        throw createValidationError(
+          'userName',
+          'El nombre de usuario ya existe'
+        )
       }
-      return res.status(400).json({ error: 'Email already exists' })
+      throw createValidationError('email', 'El email ya existe')
     }
 
     const newUser = new User({
@@ -45,7 +85,12 @@ const register = async (req, res, next) => {
       password: req.body.password,
       rol: 'user'
     })
+
     const user = await newUser.save()
+
+    const duration = Date.now() - startTime
+    logDatabase('INSERT', 'users', duration, true)
+    logAuth('REGISTER', user._id, true)
 
     // Devolver una versión "segura" del usuario (sin password)
     const safeUser = {
@@ -55,27 +100,49 @@ const register = async (req, res, next) => {
       favoritos: user.favoritos,
       rol: user.rol
     }
-    return res.status(201).json(safeUser)
+
+    return res.status(201).json({
+      success: true,
+      message: 'Usuario registrado exitosamente',
+      data: safeUser
+    })
   } catch (error) {
-    return res
-      .status(400)
-      .json({ error: 'Error registering user', details: error.message })
+    console.error('Error en registro:', error)
+    if (error.details) {
+      console.error('Detalles del error:', error.details)
+    }
+    const duration = Date.now() - startTime
+    logDatabase('INSERT', 'users', duration, false)
+    logAuth('REGISTER', 'unknown', false)
+    logError(error, req)
+    next(error)
   }
 }
 
 const login = async (req, res, next) => {
+  const startTime = Date.now()
+
   try {
     const { userName, password } = req.body
     const user = await User.findOne({ userName }).populate('favoritos')
 
     if (!user) {
-      return res.status(400).json({ error: 'Incorrect user or password' })
+      logAuth('LOGIN', 'unknown', false)
+      throw createValidationError(
+        'credentials',
+        'Usuario o contraseña incorrectos'
+      )
     }
 
     const isPasswordValid = await bcrypt.compare(password, user.password)
 
     if (isPasswordValid) {
       const token = generarToken(user._id)
+
+      const duration = Date.now() - startTime
+      logDatabase('FIND', 'users', duration, true)
+      logAuth('LOGIN', user._id, true)
+
       // Crea un objeto "seguro" sin la contraseña
       const safeUser = {
         _id: user._id,
@@ -84,52 +151,85 @@ const login = async (req, res, next) => {
         favoritos: user.favoritos,
         rol: user.rol
       }
-      return res.status(200).json({ token, user: safeUser })
+
+      return res.status(200).json({
+        success: true,
+        message: 'Login exitoso',
+        data: {
+          token,
+          user: safeUser
+        }
+      })
     } else {
-      return res.status(400).json({ error: 'Incorrect user or password' })
+      logAuth('LOGIN', user._id, false)
+      throw createValidationError(
+        'credentials',
+        'Usuario o contraseña incorrectos'
+      )
     }
   } catch (error) {
-    console.error('Login error:', error)
-    return res
-      .status(400)
-      .json({ error: 'Error making login', details: error.message })
+    logError(error, req)
+    next(error)
   }
 }
 
 const updateUser = async (req, res, next) => {
+  const startTime = Date.now()
+
   try {
     const { id } = req.params
 
     if (req.user._id.toString() !== id) {
-      return res.status(400).json({ error: 'Cannot modify other users' })
+      throw createValidationError(
+        'permission',
+        'No puedes modificar otros usuarios'
+      )
     }
 
     const oldUser = await User.findById(id)
+    if (!oldUser) {
+      throw createNotFoundError('Usuario')
+    }
+
     const newUser = new User(req.body)
     newUser._id = id
     newUser.favoritos = [...oldUser.favoritos, ...newUser.favoritos]
+
     const userUpdated = await User.findByIdAndUpdate(id, newUser, { new: true })
 
-    return res.status(200).json(userUpdated)
+    const duration = Date.now() - startTime
+    logDatabase('UPDATE', 'users', duration, true)
+
+    return res.status(200).json({
+      success: true,
+      message: 'Usuario actualizado exitosamente',
+      data: userUpdated
+    })
   } catch (error) {
-    return res
-      .status(400)
-      .json({ error: 'Error updating user', details: error.message })
+    const duration = Date.now() - startTime
+    logDatabase('UPDATE', 'users', duration, false)
+    logError(error, req)
+    next(error)
   }
 }
 
 const addFavorite = async (req, res, next) => {
+  const startTime = Date.now()
+
   try {
     const { id } = req.params
     const { libroId } = req.body
 
     if (req.user._id.toString() !== id) {
-      return res.status(400).json({ error: 'Cannot modify other users' })
+      throw createValidationError(
+        'permission',
+        'No puedes modificar otros usuarios'
+      )
     }
 
     const user = await User.findById(id)
     if (!user) {
-      return res.status(404).json({ error: 'User not found' })
+      throw createNotFoundError('Usuario')
     }
 
     // Si el libro ya está en favoritos, lo quitamos
@@ -145,40 +245,63 @@ const addFavorite = async (req, res, next) => {
 
     await user.save()
     const updatedUser = await User.findById(id).populate('favoritos')
-    return res.status(200).json(updatedUser)
+
+    const duration = Date.now() - startTime
+    logDatabase('UPDATE', 'users', duration, true)
+
+    return res.status(200).json({
+      success: true,
+      message:
+        index > -1
+          ? 'Libro eliminado de favoritos'
+          : 'Libro añadido a favoritos',
+      data: updatedUser
+    })
   } catch (error) {
-    console.error('Error en addFavorite:', error)
-    return res.status(400).json({ error: 'Error modifying favorites' })
+    const duration = Date.now() - startTime
+    logDatabase('UPDATE', 'users', duration, false)
+    logError(error, req)
+    next(error)
   }
 }
 
 const deleteUser = async (req, res, next) => {
+  const startTime = Date.now()
+
   try {
     const { id } = req.params
 
     if (req.user._id.toString() !== id) {
-      return res.status(400).json({ error: 'Cannot delete other users' })
+      throw createValidationError(
+        'permission',
+        'No puedes eliminar otros usuarios'
+      )
     }
 
     const deletedUser = await User.findByIdAndDelete(id)
 
     if (!deletedUser) {
-      return res.status(404).json({ error: 'User not found' })
+      throw createNotFoundError('Usuario')
     }
 
+    const duration = Date.now() - startTime
+    logDatabase('DELETE', 'users', duration, true)
+    logAuth('DELETE', id, true)
+
     return res.status(200).json({
-      message: 'User deleted successfully',
-      deletedUser: {
+      success: true,
+      message: 'Usuario eliminado exitosamente',
+      data: {
         _id: deletedUser._id,
         userName: deletedUser.userName,
         email: deletedUser.email
       }
     })
   } catch (error) {
-    return res.status(400).json({
-      error: 'Error deleting user',
-      details: error.message
-    })
+    const duration = Date.now() - startTime
+    logDatabase('DELETE', 'users', duration, false)
+    logError(error, req)
+    next(error)
   }
 }
 

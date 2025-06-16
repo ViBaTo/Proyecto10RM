@@ -1,4 +1,5 @@
 import Books from './Books.js'
+import { api, showNotification } from '../utils/api.js'
 
 const template = () => `
   <section id="login">
@@ -20,34 +21,41 @@ const template = () => `
 `
 
 const loginSubmit = async () => {
-  const username = document.querySelector('#username').value
+  const username = document.querySelector('#username').value.trim()
   const password = document.querySelector('#password').value
 
+  // Validación básica
+  if (!username || !password) {
+    showNotification('Por favor, completa todos los campos', 'warning')
+    return
+  }
+
   try {
-    const data = await fetch('http://localhost:3000/api/v1/users/login', {
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      method: 'POST',
-      body: JSON.stringify({
-        userName: username,
-        password: password
-      })
+    const response = await api.login({
+      userName: username,
+      password: password
     })
 
-    const dataRes = await data.json()
-
-    if (data.ok) {
-      localStorage.setItem('user', JSON.stringify(dataRes))
-      updateNavigation()
-      alert(`Welcome ${username}`)
-      Books()
-    } else {
-      alert(dataRes.error || 'Error en el login')
+    // El nuevo formato devuelve { token, user } directamente
+    const userData = {
+      token: response.token,
+      user: response.user
     }
+
+    // Guardar usuario en localStorage
+    localStorage.setItem('user', JSON.stringify(userData))
+
+    // Actualizar navegación
+    updateNavigation()
+
+    // Mostrar mensaje de éxito
+    showNotification(`¡Bienvenido ${username}!`, 'success')
+
+    // Redirigir a la página principal
+    Books()
   } catch (error) {
+    // El error ya se maneja en la función api, solo necesitamos mostrar un mensaje específico
     console.error('Error en el login:', error)
-    alert('Error en el login. Por favor, intenta de nuevo.')
   }
 }
 
@@ -56,17 +64,23 @@ const updateNavigation = () => {
   const registerLink = document.getElementById('registerlink')
   const logoutLink = document.getElementById('logoutlink')
   const favsLink = document.getElementById('favslink')
+  const createLink = document.getElementById('createlink')
+  const profileLink = document.getElementById('profilelink')
 
   if (localStorage.getItem('user')) {
     loginLink.style.display = 'none'
     registerLink.style.display = 'none'
     logoutLink.style.display = 'block'
     favsLink.style.display = 'block'
+    createLink.style.display = 'block'
+    profileLink.style.display = 'block'
   } else {
     loginLink.style.display = 'block'
     registerLink.style.display = 'block'
     logoutLink.style.display = 'none'
     favsLink.style.display = 'none'
+    createLink.style.display = 'none'
+    profileLink.style.display = 'none'
   }
 }
 
@@ -79,6 +93,17 @@ const Login = () => {
       ev.preventDefault()
       loginSubmit()
     })
+
+    // Permitir login con Enter
+    const form = document.querySelector('.auth-form')
+    if (form) {
+      form.addEventListener('keypress', (ev) => {
+        if (ev.key === 'Enter') {
+          ev.preventDefault()
+          loginSubmit()
+        }
+      })
+    }
   }
 }
 

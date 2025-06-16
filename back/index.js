@@ -1,4 +1,3 @@
-// Importamos las dependencias necesarias
 import dotenv from 'dotenv'
 import express from 'express'
 import mongoose from 'mongoose'
@@ -6,20 +5,24 @@ import cors from 'cors'
 import usersRouter from './src/api/routes/users.js'
 import librosRouter from './src/api/routes/libros.js'
 import uploadRouter from './src/api/routes/upload.js'
+import { logger } from './src/middlewares/logger.js'
+import { errorHandler } from './src/middlewares/errorHandler.js'
+import { logInfo, logError } from './src/middlewares/logger.js'
 
-// Configurar dotenv
 dotenv.config()
 
-// Inicializamos Express
 const app = express()
 
-// Middleware para parsear JSON y habilitar CORS
 const allowedOrigins = [
   'http://localhost:5173',
   'http://127.0.0.1:5173',
-  'https://proyecto10-rm.vercel.app' // Añade aquí tu dominio de frontend en Vercel
+  'https://proyecto10-rm.vercel.app'
 ]
 
+// Middleware de logging
+app.use(logger)
+
+// Configuración de CORS
 app.use(
   cors({
     origin: function (origin, callback) {
@@ -36,24 +39,36 @@ app.use(
     credentials: true
   })
 )
+
+// Middleware para parsear JSON y URL-encoded
 app.use(express.json({ limit: '50mb' }))
 app.use(express.urlencoded({ limit: '50mb', extended: true }))
 
-// Rutas base
+// Rutas de salud y estado
 app.get('/', (req, res) => {
-  res.json({ message: 'Backend API is running' })
+  res.json({
+    message: 'Backend API is running',
+    version: '1.0.0',
+    timestamp: new Date().toISOString()
+  })
 })
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'healthy', timestamp: new Date().toISOString() })
+  res.json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV || 'development'
+  })
 })
 
-// Conexión a la base de datos MongoDB
+// Función para conectar a la base de datos
 const connectDB = async () => {
   try {
     await mongoose.connect(process.env.MONGODB_URI)
-    console.log('Conectado a la base de datos')
+    logInfo('Conectado a la base de datos MongoDB')
   } catch (error) {
+    logError(error)
     console.error('Error al conectar con la base de datos:', error)
     process.exit(1)
   }
@@ -64,7 +79,7 @@ app.use('/api/v1/users', usersRouter)
 app.use('/api/v1/books', librosRouter)
 app.use('/api/v1/upload', uploadRouter)
 
-// Manejo de rutas no encontradas
+// Middleware para rutas no encontradas
 app.use((req, res) => {
   res.status(404).json({
     error: 'Not Found',
@@ -74,21 +89,42 @@ app.use((req, res) => {
   })
 })
 
-// Manejo de errores
-app.use((err, req, res, next) => {
-  console.error('Error:', err)
-  res.status(err.status || 500).json({
-    error: err.message || 'Error interno del servidor',
-    timestamp: new Date().toISOString()
-  })
-})
+// Middleware global de manejo de errores (debe ir al final)
+app.use(errorHandler)
 
-// Configuramos el puerto
 const PORT = process.env.PORT || 3000
 
-// Conectar a la base de datos y levantar el servidor
-connectDB().then(() => {
-  app.listen(PORT, () => {
-    console.log(`Servidor desplegado en http://localhost:${PORT}`)
+// Iniciar servidor
+connectDB()
+  .then(() => {
+    app.listen(PORT, () => {
+      logInfo(`Servidor iniciado en http://localhost:${PORT}`)
+      logInfo(`Ambiente: ${process.env.NODE_ENV || 'development'}`)
+    })
   })
+  .catch((error) => {
+    logError(error)
+    process.exit(1)
+  })
+
+// Manejo de señales de terminación
+process.on('SIGTERM', () => {
+  logInfo('SIGTERM recibido, cerrando servidor...')
+  process.exit(0)
+})
+
+process.on('SIGINT', () => {
+  logInfo('SIGINT recibido, cerrando servidor...')
+  process.exit(0)
+})
+
+// Manejo de errores no capturados
+process.on('uncaughtException', (error) => {
+  logError(error)
+  process.exit(1)
+})
+
+process.on('unhandledRejection', (reason, promise) => {
+  logError(new Error(`Unhandled Rejection at: ${promise}, reason: ${reason}`))
+  process.exit(1)
 })

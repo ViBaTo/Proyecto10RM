@@ -1,4 +1,5 @@
 import Login from './Login.js'
+import { api, showNotification } from '../utils/api.js'
 
 const template = () => `
   <section id="register">
@@ -19,64 +20,73 @@ const template = () => `
 `
 
 const registerSubmit = async () => {
-  const username = document.querySelector('#username').value
-  const email = document.querySelector('#email').value
+  const username = document.querySelector('#username').value.trim()
+  const email = document.querySelector('#email').value.trim()
   const password = document.querySelector('#password').value
 
-  // Validación básica de email
+  // Validaciones
+  if (!username || !email || !password) {
+    showNotification('Por favor, completa todos los campos', 'warning')
+    return
+  }
+
+  // Validación de email
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
   if (!emailRegex.test(email)) {
-    alert('Please enter a valid email address')
+    showNotification('Por favor, introduce un email válido', 'warning')
+    return
+  }
+
+  // Validación de contraseña
+  if (password.length < 6) {
+    showNotification(
+      'La contraseña debe tener al menos 6 caracteres',
+      'warning'
+    )
     return
   }
 
   try {
-    const data = await fetch('http://localhost:3000/api/v1/users/register', {
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      method: 'POST',
-      body: JSON.stringify({
-        userName: username,
-        email: email,
-        password: password
-      })
+    // Registrar usuario
+    await api.register({
+      userName: username,
+      email: email,
+      password: password
     })
 
-    if (data.ok) {
-      // Si el registro es exitoso, hacemos login automáticamente
-      const loginData = await fetch(
-        'http://localhost:3000/api/v1/users/login',
-        {
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          method: 'POST',
-          body: JSON.stringify({
-            userName: username,
-            password: password
-          })
-        }
-      )
+    // Si el registro es exitoso, hacer login automáticamente
+    const loginResponse = await api.login({
+      userName: username,
+      password: password
+    })
 
-      const loginRes = await loginData.json()
-
-      if (loginData.ok) {
-        localStorage.setItem('user', JSON.stringify(loginRes))
-        alert(`Welcome ${username}`)
-        updateNavigation()
-        Login()
-      } else {
-        alert('Registro exitoso. Por favor, inicia sesión.')
-        Login()
-      }
-    } else {
-      const errorData = await data.json()
-      alert(errorData.error || 'Error en el registro')
+    // El nuevo formato devuelve { token, user } directamente
+    const userData = {
+      token: loginResponse.token,
+      user: loginResponse.user
     }
+
+    // Guardar usuario en localStorage
+    localStorage.setItem('user', JSON.stringify(userData))
+
+    // Mostrar mensaje de éxito
+    showNotification(`¡Registro exitoso! Bienvenido ${username}`, 'success')
+
+    // Actualizar navegación
+    updateNavigation()
+
+    // Redirigir al login (que mostrará la página principal)
+    Login()
   } catch (error) {
+    // Mostrar detalles de validación si existen
+    if (error.details && Array.isArray(error.details)) {
+      error.details.forEach((err) => {
+        showNotification(`${err.field}: ${err.message}`, 'error')
+      })
+    } else {
+      showNotification(error.message || 'Error en el registro', 'error')
+    }
     console.error('Error en el registro:', error)
-    alert('Error en el registro. Por favor, intenta de nuevo.')
   }
 }
 
@@ -108,10 +118,24 @@ const updateNavigation = () => {
 const Register = () => {
   document.querySelector('main').innerHTML = template()
 
-  document.querySelector('#registerbtn').addEventListener('click', (ev) => {
-    ev.preventDefault()
-    registerSubmit()
-  })
+  const registerBtn = document.querySelector('#registerbtn')
+  if (registerBtn) {
+    registerBtn.addEventListener('click', (ev) => {
+      ev.preventDefault()
+      registerSubmit()
+    })
+
+    // Permitir registro con Enter
+    const form = document.querySelector('.auth-form')
+    if (form) {
+      form.addEventListener('keypress', (ev) => {
+        if (ev.key === 'Enter') {
+          ev.preventDefault()
+          registerSubmit()
+        }
+      })
+    }
+  }
 }
 
 export default Register
